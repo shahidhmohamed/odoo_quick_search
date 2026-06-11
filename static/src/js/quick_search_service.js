@@ -10,6 +10,33 @@ const OPEN_HOTKEYS = new Set(["control+shift+k", "control+alt+k"]);
 const SEARCH_DEBOUNCE_MS = 180;
 const MIN_QUERY_LENGTH = 2;
 
+/**
+ * Align the top app menu bar with the window action opened from quick search.
+ */
+function syncMenuForAction(actionDict, menuService) {
+    const actionId = actionDict?.id;
+    const actionPath = actionDict?.path;
+    if (!actionId && !actionPath) {
+        return;
+    }
+    const storedMenuId = Number(browser.sessionStorage.getItem("menu_id"));
+    const matching = menuService
+        .getAll()
+        .filter(
+            (menu) =>
+                (actionId && menu.actionID === actionId) ||
+                (actionPath && menu.actionPath === actionPath)
+        );
+    if (!matching.length) {
+        return;
+    }
+    const menu =
+        matching.find((m) => m.appID === storedMenuId) ||
+        matching.find((m) => m.id === storedMenuId) ||
+        matching[0];
+    menuService.setCurrentMenu(menu.appID);
+}
+
 export const quickSearchState = reactive({
     isOpen: false,
     query: "",
@@ -21,9 +48,9 @@ export const quickSearchState = reactive({
 });
 
 export const quickSearchService = {
-    dependencies: ["hotkey", "orm", "action", "notification"],
+    dependencies: ["hotkey", "orm", "action", "notification", "menu"],
 
-    start(env, { hotkey, orm, action, notification }) {
+    start(env, { hotkey, orm, action, notification, menu }) {
         /** @type {HTMLElement[]} */
         let inertTargets = [];
         let previouslyFocused = null;
@@ -181,12 +208,23 @@ export const quickSearchService = {
                 return;
             }
             close();
-            const actionDict = await orm.call(
+            const payload = await orm.call(
                 "ghori.quick.search.target",
                 "ghori_quick_search_open_action",
                 [result.model, result.id]
             );
-            await action.doAction(actionDict);
+            const actionDict = payload?.action ?? payload;
+            const menuAppId = payload?.menu_app_id;
+
+            const syncMenu = () => {
+                if (menuAppId) {
+                    menu.setCurrentMenu(menuAppId);
+                    return;
+                }
+                syncMenuForAction(actionDict, menu);
+            };
+
+            await action.doAction(actionDict, { onActionReady: syncMenu });
         };
 
         const onOpenShortcut = (ev) => {

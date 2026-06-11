@@ -31,15 +31,34 @@ class GhoriQuickSearchTarget(models.Model):
         index=True,
     )
     model_name = fields.Char(related="model_id.model", store=True, readonly=True, string="Technical model")
-    search_field_names = fields.Char(
+    search_field_ids = fields.Many2many(
+        "ir.model.fields",
+        "ghori_quick_search_target_search_field_rel",
+        "target_id",
+        "field_id",
         string="Search fields",
-        required=True,
-        default="name",
-        help="Comma-separated field names searched with ilike (e.g. name,login,email).",
+        domain="[('model_id', '=', model_id), ('ttype', 'in', ('char', 'text', 'html', 'selection', 'many2one'))]",
+        help="Fields searched with “contains” when the user types in quick search.",
+    )
+    subtitle_field_ids = fields.Many2many(
+        "ir.model.fields",
+        "ghori_quick_search_target_subtitle_field_rel",
+        "target_id",
+        "field_id",
+        string="Subtitle fields",
+        domain="[('model_id', '=', model_id), ('ttype', 'in', ('char', 'text', 'html', 'selection', 'many2one'))]",
+        help="First non-empty value is shown under the title in search results.",
+    )
+    search_field_names = fields.Char(
+        string="Search fields (technical)",
+        compute="_compute_field_name_strings",
+        store=True,
+        help="Comma-separated field names — synced from Search fields above.",
     )
     subtitle_field_names = fields.Char(
-        string="Subtitle fields",
-        help="Comma-separated fields; first non-empty value is shown under the title.",
+        string="Subtitle fields (technical)",
+        compute="_compute_field_name_strings",
+        store=True,
     )
     extra_domain = fields.Char(
         string="Extra domain",
@@ -61,13 +80,20 @@ class GhoriQuickSearchTarget(models.Model):
         string="Allowed groups",
         help="Leave empty to allow all internal users who can read the model.",
     )
-    open_action_xmlid = fields.Char(
+    open_action_id = fields.Many2one(
+        "ir.actions.act_window",
         string="Open action",
+        domain="[('res_model', '=', model_name)]",
         help=(
-            "Optional window action xmlid used when opening a match "
-            "(e.g. base.action_res_users). Ensures the same form as the "
-            "app menu instead of a generic default form view."
+            "Window action used when opening a match — same form as the app "
+            "menu (e.g. Settings → Users for res.users)."
         ),
+    )
+    open_action_xmlid = fields.Char(
+        string="Open action (technical)",
+        compute="_compute_open_action_xmlid",
+        store=True,
+        help="External ID synced from Open action — used at runtime.",
     )
 
     _sql_constraints = [
@@ -77,6 +103,58 @@ class GhoriQuickSearchTarget(models.Model):
             "Each model can only be registered once for quick search.",
         ),
     ]
+
+    @api.constrains("search_field_ids", "model_id")
+    def _check_search_fields(self):
+        for rec in self:
+            if not rec.search_field_ids:
+                raise UserError(
+                    _("Pick at least one Search field for %(label)s.")
+                    % {"label": rec.name or rec.model_id.display_name}
+                )
+
+    @api.depends("search_field_ids.name", "subtitle_field_ids.name")
+    def _compute_field_name_strings(self):
+        for rec in self:
+            search_names = rec.search_field_ids.mapped("name")
+            rec.search_field_names = ",".join(search_names) if search_names else "name"
+            subtitle_names = rec.subtitle_field_ids.mapped("name")
+            rec.subtitle_field_names = ",".join(subtitle_names) if subtitle_names else ""
+
+    @api.depends("open_action_id")
+    def _compute_open_action_xmlid(self):
+        IrModelData = self.env["ir.model.data"].sudo()
+        for rec in self:
+            rec.open_action_xmlid = False
+            if not rec.open_action_id:
+                continue
+            imd = IrModelData.search(
+                [
+                    ("model", "=", "ir.actions.act_window"),
+                    ("res_id", "=", rec.open_action_id.id),
+                ],
+                limit=1,
+            )
+            if imd:
+                rec.open_action_xmlid = f"{imd.module}.{imd.name}"
+
+    @api.onchange("model_id")
+    def _onchange_model_id(self):
+        self.search_field_ids = False
+        self.subtitle_field_ids = False
+        self.open_action_id = False
+        if not self.model_id:
+            return
+        default_fields = self.env["ir.model.fields"].search(
+            [
+                ("model_id", "=", self.model_id.id),
+                ("name", "in", ("name", "display_name")),
+                ("ttype", "in", ("char", "text", "html", "selection", "many2one")),
+            ],
+            limit=1,
+        )
+        if default_fields:
+            self.search_field_ids = default_fields
 
     @api.constrains("extra_domain")
     def _check_extra_domain(self):
@@ -148,16 +226,19 @@ class GhoriQuickSearchTarget(models.Model):
         """Build a form-only window action for *record* (menu action when configured)."""
         model = record._name
         action = False
-        xmlid = (target.open_action_xmlid or "").strip() if target else ""
-        if xmlid:
-            try:
-                action = dict(self.env["ir.actions.actions"]._for_xml_id(xmlid))
-            except ValueError:
-                _logger.warning(
-                    "ghori_quick_search: unknown open action xmlid %r for %s",
-                    xmlid,
-                    model,
-                )
+        if target and target.open_action_id:
+            action = target.open_action_id.sudo()._get_action_dict()
+        elif target:
+            xmlid = (target.open_action_xmlid or "").strip()
+            if xmlid:
+                try:
+                    action = dict(self.env["ir.actions.actions"]._for_xml_id(xmlid))
+                except ValueError:
+                    _logger.warning(
+                        "ghori_quick_search: unknown open action xmlid %r for %s",
+                        xmlid,
+                        model,
+                    )
         if not action:
             action = {
                 "type": "ir.actions.act_window",
@@ -178,6 +259,32 @@ class GhoriQuickSearchTarget(models.Model):
         return action
 
     @api.model
+    def _ghori_menu_app_id_for_window_action(self, action_dict, model_name):
+        """Root app menu id so the web client navbar shows the correct submenus."""
+        Menu = self.env["ir.ui.menu"].sudo()
+        menus = Menu.browse()
+        action_id = action_dict.get("id")
+        if action_id:
+            action_ref = f"ir.actions.act_window,{action_id}"
+            menus = Menu.search([("action", "=", action_ref)], order="sequence, id")
+        if not menus and model_name:
+            window_actions = self.env["ir.actions.act_window"].sudo().search(
+                [("res_model", "=", model_name)], order="sequence, id"
+            )
+            for act in window_actions:
+                action_ref = f"ir.actions.act_window,{act.id}"
+                found = Menu.search([("action", "=", action_ref)], limit=1, order="sequence, id")
+                if found:
+                    menus = found
+                    break
+        if not menus:
+            return False
+        app_menu = menus[0]
+        while app_menu.parent_id:
+            app_menu = app_menu.parent_id
+        return app_menu.id
+
+    @api.model
     def ghori_quick_search_open_action(self, model, res_id):
         """Return the window action dict to open one search result."""
         record = self.env[model].browse(int(res_id)).exists()
@@ -187,7 +294,11 @@ class GhoriQuickSearchTarget(models.Model):
         target = self.search(
             [("model_name", "=", model), ("active", "=", True)], limit=1
         )
-        return self._ghori_quick_search_form_action(record, target)
+        action = self._ghori_quick_search_form_action(record, target)
+        return {
+            "action": action,
+            "menu_app_id": self._ghori_menu_app_id_for_window_action(action, model) or False,
+        }
 
     @api.model
     def ghori_quick_search(self, query, limit=30):

@@ -8,7 +8,8 @@
                 <field name="sequence" widget="handle"/>
                 <field name="name"/>
                 <field name="model_id"/>
-                <field name="search_field_names"/>
+                <field name="search_field_ids" widget="many2many_tags"/>
+                <field name="open_action_id"/>
                 <field name="result_limit"/>
                 <field name="active"/>
             </list>
@@ -27,15 +28,23 @@
                         <group>
                             <field name="name"/>
                             <field name="model_id" options="{'no_create': True}"/>
+                            <field name="model_name" invisible="1"/>
                             <field name="icon" placeholder="fa-user"/>
                             <field name="sequence"/>
                             <field name="active"/>
                         </group>
                         <group>
-                            <field name="search_field_names"/>
-                            <field name="subtitle_field_names"/>
+                            <field name="search_field_ids"
+                                   widget="many2many_tags"
+                                   options="{'no_create': True}"
+                                   context="{'default_model_id': model_id}"/>
+                            <field name="subtitle_field_ids"
+                                   widget="many2many_tags"
+                                   options="{'no_create': True}"
+                                   context="{'default_model_id': model_id}"/>
                             <field name="result_limit"/>
-                            <field name="open_action_xmlid" placeholder="base.action_res_users"/>
+                            <field name="open_action_id"
+                                   options="{'no_create': True, 'no_open': True}"/>
                             <field name="extra_domain" widget="text"/>
                             <field name="group_ids" widget="many2many_tags"/>
                         </group>
