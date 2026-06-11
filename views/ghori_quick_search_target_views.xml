@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_ghori_quick_search_target_tree" model="ir.ui.view">
+        <field name="name">ghori.quick.search.target.list</field>
+        <field name="model">ghori.quick.search.target</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="model_id"/>
+                <field name="search_field_names"/>
+                <field name="result_limit"/>
+                <field name="active"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_ghori_quick_search_target_form" model="ir.ui.view">
+        <field name="name">ghori.quick.search.target.form</field>
+        <field name="model">ghori.quick.search.target</field>
+        <field name="arch" type="xml">
+            <form string="Quick Search Target">
+                <sheet>
+                    <div class="oe_button_box" name="button_box"/>
+                    <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active"/>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="model_id" options="{'no_create': True}"/>
+                            <field name="icon" placeholder="fa-user"/>
+                            <field name="sequence"/>
+                            <field name="active"/>
+                        </group>
+                        <group>
+                            <field name="search_field_names"/>
+                            <field name="subtitle_field_names"/>
+                            <field name="result_limit"/>
+                            <field name="open_action_xmlid" placeholder="base.action_res_users"/>
+                            <field name="extra_domain" widget="text"/>
+                            <field name="group_ids" widget="many2many_tags"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_ghori_quick_search_target" model="ir.actions.act_window">
+        <field name="name">Quick Search Targets</field>
+        <field name="res_model">ghori.quick.search.target</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Configure what the global quick search can find.</p>
+            <p>Each row is a model (Users, Products, …) with the fields searched when you press
+               <strong>⌘⇧K</strong> / <strong>Ctrl+Shift+K</strong> anywhere in Odoo.</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_ghori_quick_search_target"
+              name="Quick Search Targets"
+              parent="base.menu_custom"
+              action="action_ghori_quick_search_target"
+              sequence="90"
+              groups="base.group_system"/>
+</odoo>

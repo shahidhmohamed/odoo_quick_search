@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <record id="ghori_quick_search_target_users" model="ghori.quick.search.target">
+        <field name="name">Users</field>
+        <field name="sequence">10</field>
+        <field name="model_id" ref="base.model_res_users"/>
+        <field name="search_field_names">name,login,email,partner_id.email</field>
+        <field name="subtitle_field_names">login,email,partner_id.email</field>
+        <field name="extra_domain">[('share', '=', False)]</field>
+        <field name="icon">fa-user</field>
+        <field name="result_limit">10</field>
+        <field name="open_action_xmlid">base.action_res_users</field>
+    </record>
+
+    <record id="ghori_quick_search_target_partners" model="ghori.quick.search.target">
+        <field name="name">Contacts</field>
+        <field name="sequence">20</field>
+        <field name="model_id" ref="base.model_res_partner"/>
+        <field name="search_field_names">name,email,phone,mobile,ref,vat</field>
+        <field name="subtitle_field_names">email,phone,mobile</field>
+        <field name="extra_domain">[('active', '=', True)]</field>
+        <field name="icon">fa-address-book</field>
+        <field name="result_limit">10</field>
+        <field name="open_action_xmlid">contacts.action_contacts</field>
+    </record>
+
+    <record id="ghori_quick_search_target_products" model="ghori.quick.search.target">
+        <field name="name">Products</field>
+        <field name="sequence">30</field>
+        <field name="model_id" ref="product.model_product_product"/>
+        <field name="search_field_names">name,default_code,barcode</field>
+        <field name="subtitle_field_names">default_code,barcode</field>
+        <field name="extra_domain">[('active', '=', True)]</field>
+        <field name="icon">fa-cube</field>
+        <field name="result_limit">12</field>
+        <field name="open_action_xmlid">product.product_normal_action_sell</field>
+    </record>
+
+    <record id="ghori_quick_search_target_product_templates" model="ghori.quick.search.target">
+        <field name="name">Product templates</field>
+        <field name="sequence">35</field>
+        <field name="model_id" ref="product.model_product_template"/>
+        <field name="search_field_names">name,default_code,barcode</field>
+        <field name="subtitle_field_names">default_code,barcode</field>
+        <field name="extra_domain">[('active', '=', True)]</field>
+        <field name="icon">fa-cubes</field>
+        <field name="result_limit">8</field>
+        <field name="open_action_xmlid">product.product_template_action</field>
+    </record>
+
+    <record id="ghori_quick_search_target_employees" model="ghori.quick.search.target">
+        <field name="name">Employees</field>
+        <field name="sequence">25</field>
+        <field name="model_id" ref="hr.model_hr_employee"/>
+        <field name="search_field_names">name,work_email,work_phone,mobile_phone</field>
+        <field name="subtitle_field_names">work_email,job_id</field>
+        <field name="extra_domain">[('active', '=', True)]</field>
+        <field name="icon">fa-id-badge</field>
+        <field name="result_limit">8</field>
+        <field name="open_action_xmlid">hr.open_view_employee_list</field>
+    </record>
+</odoo>

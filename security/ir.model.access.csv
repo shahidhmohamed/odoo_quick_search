@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_ghori_quick_search_target_user,ghori.quick.search.target.user,model_ghori_quick_search_target,base.group_user,1,0,0,0
+access_ghori_quick_search_target_system,ghori.quick.search.target.system,model_ghori_quick_search_target,base.group_system,1,1,1,1

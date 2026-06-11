@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="ghori_quick_search.QuickSearchOverlay">
+        <t t-if="qs.isOpen">
+            <div class="ghori-qs-overlay"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-label="Quick search"
+                 t-on-click="onBackdropClick">
+                <div class="ghori-qs-panel" t-on-click.stop="">
+                    <div class="ghori-qs-searchbar">
+                        <i class="fa fa-search ghori-qs-search-icon" title="Search"/>
+                        <input type="text"
+                               class="ghori-qs-input o_input"
+                               placeholder="Search users, products, contacts…"
+                               autocomplete="off"
+                               spellcheck="false"
+                               t-ref="searchInput"
+                               t-att-value="qs.query"
+                               t-on-input="onInput"/>
+                        <span t-if="qs.loading" class="ghori-qs-spinner">
+                            <i class="fa fa-circle-o-notch fa-spin"/>
+                        </span>
+                    </div>
+
+                    <div class="ghori-qs-body" t-ref="resultList">
+                        <t t-if="qs.error">
+                            <div class="ghori-qs-empty ghori-qs-empty--error" t-esc="qs.error"/>
+                        </t>
+                        <t t-elif="qs.query.trim().length &lt; 2">
+                            <div class="ghori-qs-empty">
+                                Type at least 2 characters to search records in Odoo.
+                            </div>
+                        </t>
+                        <t t-elif="qs.searched and !qs.results.length">
+                            <div class="ghori-qs-empty">
+                                No matches for <strong t-esc="qs.query"/>.
+                            </div>
+                        </t>
+                        <t t-else="">
+                            <t t-foreach="groupedResults" t-as="group" t-key="group.category">
+                                <div class="ghori-qs-group">
+                                    <div class="ghori-qs-group-label" t-esc="group.category"/>
+                                    <t t-foreach="group.rows" t-as="row" t-key="row.model + '-' + row.id">
+                                        <button type="button"
+                                                t-att-class="rowClass(group.category, row_index)"
+                                                t-on-click="() => this.onRowClick(group.category, row_index)"
+                                                t-on-mouseenter="() => this.onRowMouseEnter(group.category, row_index)">
+                                            <span class="ghori-qs-row-icon">
+                                                <i t-att-class="'fa ' + (row.icon || 'fa-search')"/>
+                                            </span>
+                                            <span class="ghori-qs-row-text">
+                                                <span class="ghori-qs-row-title">
+                                                    <t t-foreach="highlight(row.name)" t-as="part" t-key="part_index">
+                                                        <t t-if="part.match">
+                                                            <strong class="ghori-qs-match" t-esc="part.text"/>
+                                                        </t>
+                                                        <t t-else="" t-esc="part.text"/>
+                                                    </t>
+                                                </span>
+                                                <span t-if="row.subtitle" class="ghori-qs-row-subtitle">
+                                                    <t t-foreach="highlight(row.subtitle)" t-as="part" t-key="part_index">
+                                                        <t t-if="part.match">
+                                                            <strong class="ghori-qs-match" t-esc="part.text"/>
+                                                        </t>
+                                                        <t t-else="" t-esc="part.text"/>
+                                                    </t>
+                                                </span>
+                                            </span>
+                                            <span class="ghori-qs-row-meta">
+                                                <span class="ghori-qs-row-model" t-esc="row.model"/>
+                                            </span>
+                                        </button>
+                                    </t>
+                                </div>
+                            </t>
+                        </t>
+                    </div>
+
+                    <div class="ghori-qs-footer">
+                        <span class="ghori-qs-tip">
+                            <i class="fa fa-keyboard-o"/>
+                            Open anywhere with <strong t-esc="shortcutHint()"/>
+                            · ↑↓ navigate · Enter open · Esc close
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </t>
+
+</templates>
