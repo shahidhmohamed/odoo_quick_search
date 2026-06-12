@@ -93,4 +93,32 @@ export class QuickSearchOverlay extends Component {
         const isMac = navigator.platform.toUpperCase().includes("MAC");
         return isMac ? "⌘⇧K" : "Ctrl+Shift+K";
     }
+
+    rowAppIconData(row) {
+        return row?.app_icon_data || "";
+    }
+
+    rowAppIconBuilt(row) {
+        return row?.app_icon || null;
+    }
+
+    rowAppIconBgStyle(row) {
+        const icon = row?.app_icon;
+        if (!icon) {
+            return "";
+        }
+        return `background-color:${icon.backgroundColor || "#875A7B"}`;
+    }
+
+    rowAppIconColorStyle(row) {
+        const icon = row?.app_icon;
+        if (!icon?.color) {
+            return "";
+        }
+        return `color:${icon.color}`;
+    }
+
+    rowAppIconClass(row) {
+        return row?.app_icon?.iconClass || "fa fa-cube";
+    }
 }

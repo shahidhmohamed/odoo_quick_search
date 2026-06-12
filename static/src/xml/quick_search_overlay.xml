@@ -48,7 +48,17 @@
                                                 t-on-click="() => this.onRowClick(group.category, row_index)"
                                                 t-on-mouseenter="() => this.onRowMouseEnter(group.category, row_index)">
                                             <span class="ghori-qs-row-icon">
-                                                <i t-att-class="'fa ' + (row.icon || 'fa-search')"/>
+                                                <img t-if="rowAppIconData(row)"
+                                                     class="ghori-qs-row-app-icon"
+                                                     t-att-src="rowAppIconData(row)"
+                                                     alt=""/>
+                                                <span t-elif="rowAppIconBuilt(row)"
+                                                      class="ghori-qs-row-app-icon ghori-qs-row-app-icon--built"
+                                                      t-att-style="rowAppIconBgStyle(row)">
+                                                    <i t-att-class="rowAppIconClass(row)"
+                                                       t-att-style="rowAppIconColorStyle(row)"/>
+                                                </span>
+                                                <i t-else="" t-att-class="'fa ' + (row.icon || 'fa-search')"/>
                                             </span>
                                             <span class="ghori-qs-row-text">
                                                 <span class="ghori-qs-row-title">
@@ -69,7 +79,8 @@
                                                 </span>
                                             </span>
                                             <span class="ghori-qs-row-meta">
-                                                <span class="ghori-qs-row-model" t-esc="row.model"/>
+                                                <span class="ghori-qs-row-type" t-esc="row.model_label || row.model"/>
+                                                <span t-if="row.app_label" class="ghori-qs-row-app" t-esc="row.app_label"/>
                                             </span>
                                         </button>
                                     </t>

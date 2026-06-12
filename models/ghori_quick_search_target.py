@@ -221,6 +221,146 @@ class GhoriQuickSearchTarget(models.Model):
                 return str(value)
         return ""
 
+    _GHORI_SKIP_MODULE_NAMES = frozenset({"base", "web", "web_studio", "bus"})
+
+    def _ghori_row_model_label(self):
+        """Human-readable record type, e.g. Contact, User, Sales Order."""
+        self.ensure_one()
+        if self.model_name in self.env:
+            description = getattr(self.env[self.model_name], "_description", "") or ""
+            if description:
+                return description
+        if self.model_id.name:
+            return self.model_id.name
+        return self.model_name or ""
+
+    def _ghori_row_app_menu(self):
+        """Root app menu for this target (Contacts, Sales, Inventory, …)."""
+        self.ensure_one()
+        action_dict = (
+            {"id": self.open_action_id.id} if self.open_action_id else {}
+        )
+        app_menu_id = self.env["ghori.quick.search.target"]._ghori_menu_app_id_for_window_action(
+            action_dict, self.model_name
+        )
+        if app_menu_id:
+            menu = self.env["ir.ui.menu"].sudo().browse(app_menu_id)
+            if menu.exists():
+                return menu
+        return self.env["ir.ui.menu"]
+
+    @api.model
+    def _ghori_menu_web_icon_payload(self, menu):
+        """Icon payload for the web client — image URL or FA built icon."""
+        if not menu or not menu.exists():
+            return {}
+        menu = menu.sudo()
+        web_icon = (menu.web_icon or "").strip()
+        parts = [part.strip() for part in web_icon.split(",") if part.strip()]
+
+        if menu.web_icon_data:
+            attachment = self.env["ir.attachment"].sudo().search(
+                [
+                    ("res_model", "=", "ir.ui.menu"),
+                    ("res_id", "=", menu.id),
+                    ("res_field", "=", "web_icon_data"),
+                ],
+                limit=1,
+            )
+            mimetype = (attachment.mimetype if attachment else None) or "image/png"
+            data = menu.web_icon_data
+            if isinstance(data, bytes):
+                b64 = data.decode("ascii")
+            else:
+                b64 = data or ""
+            if b64:
+                return {"app_icon_data": f"data:{mimetype};base64,{b64}"}
+
+        if len(parts) == 2:
+            image_data = menu._compute_web_icon_data(web_icon)
+            if image_data:
+                b64 = (
+                    image_data.decode("ascii")
+                    if isinstance(image_data, bytes)
+                    else image_data
+                )
+                if b64:
+                    return {"app_icon_data": f"data:image/png;base64,{b64}"}
+
+        if len(parts) >= 3:
+            return {
+                "app_icon": {
+                    "iconClass": parts[0],
+                    "color": parts[1],
+                    "backgroundColor": parts[2],
+                }
+            }
+
+        return {"app_icon_data": "/web/static/img/default_icon_app.png"}
+
+    def _ghori_row_app_label(self, installed_modules=None, app_menu=None):
+        """Odoo app / module name when we can resolve one (Contacts, Sales, …)."""
+        self.ensure_one()
+        if app_menu is None:
+            app_menu = self._ghori_row_app_menu()
+        if app_menu and app_menu.name:
+            return app_menu.name
+        if not self.model_id:
+            return ""
+        module_names = [
+            part.strip()
+            for part in (self.model_id.modules or "").split(",")
+            if part.strip()
+        ]
+        if not module_names:
+            return ""
+        if installed_modules is None:
+            installed_modules = {
+                mod.name: (mod.shortdesc or mod.name)
+                for mod in self.env["ir.module.module"]
+                .sudo()
+                .search([("state", "=", "installed")])
+            }
+        for mod_name in module_names:
+            if mod_name in self._GHORI_SKIP_MODULE_NAMES:
+                continue
+            if mod_name in installed_modules:
+                return installed_modules[mod_name]
+        for mod_name in module_names:
+            if mod_name in installed_modules:
+                return installed_modules[mod_name]
+        return ""
+
+    def _ghori_quick_search_row_meta(self, installed_modules=None):
+        self.ensure_one()
+        app_menu = self._ghori_row_app_menu()
+        icon_payload = self.env["ghori.quick.search.target"]._ghori_menu_web_icon_payload(
+            app_menu
+        )
+        return {
+            "model_label": self._ghori_row_model_label(),
+            "app_label": self._ghori_row_app_label(
+                installed_modules=installed_modules, app_menu=app_menu
+            ),
+            **icon_payload,
+        }
+
+    @api.model
+    def _ghori_quick_search_target_meta_cache(self, targets):
+        installed_modules = {
+            mod.name: (mod.shortdesc or mod.name)
+            for mod in self.env["ir.module.module"]
+            .sudo()
+            .search([("state", "=", "installed")])
+        }
+        targets.mapped("model_id")
+        return {
+            target.id: target._ghori_quick_search_row_meta(
+                installed_modules=installed_modules
+            )
+            for target in targets
+        }
+
     @api.model
     def _ghori_quick_search_form_action(self, record, target=None):
         """Build a form-only window action for *record* (menu action when configured)."""
@@ -269,7 +409,7 @@ class GhoriQuickSearchTarget(models.Model):
             menus = Menu.search([("action", "=", action_ref)], order="sequence, id")
         if not menus and model_name:
             window_actions = self.env["ir.actions.act_window"].sudo().search(
-                [("res_model", "=", model_name)], order="sequence, id"
+                [("res_model", "=", model_name)], order="id"
             )
             for act in window_actions:
                 action_ref = f"ir.actions.act_window,{act.id}"
@@ -312,6 +452,7 @@ class GhoriQuickSearchTarget(models.Model):
             return []
 
         targets = self.search([("active", "=", True)], order="sequence, id")
+        meta_cache = self._ghori_quick_search_target_meta_cache(targets)
         results = []
         remaining = max(1, min(int(limit or 30), 50))
 
@@ -339,6 +480,7 @@ class GhoriQuickSearchTarget(models.Model):
                 display = record.display_name
                 if not display:
                     continue
+                row_meta = meta_cache.get(target.id, {})
                 results.append(
                     {
                         "model": target.model_name,
@@ -347,6 +489,10 @@ class GhoriQuickSearchTarget(models.Model):
                         "subtitle": target._record_subtitle(record),
                         "category": target.name,
                         "icon": target.icon or "fa-search",
+                        "model_label": row_meta.get("model_label") or target.model_name,
+                        "app_label": row_meta.get("app_label") or "",
+                        "app_icon_data": row_meta.get("app_icon_data") or "",
+                        "app_icon": row_meta.get("app_icon") or False,
                     }
                 )
                 remaining -= 1
