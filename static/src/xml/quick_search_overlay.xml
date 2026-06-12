@@ -28,7 +28,7 @@
                         <t t-if="qs.error">
                             <div class="ghori-qs-empty ghori-qs-empty--error" t-esc="qs.error"/>
                         </t>
-                        <t t-elif="qs.query.trim().length &lt; 2">
+                        <t t-elif="qs.query.trim().length &lt; 2 and !qs.showingHistory">
                             <div class="ghori-qs-empty">
                                 Type at least 2 characters to search records in Odoo.
                             </div>

@@ -5,10 +5,14 @@ import { registry } from "@web/core/registry";
 import { browser } from "@web/core/browser/browser";
 import { getActiveHotkey } from "@web/core/hotkeys/hotkey_service";
 import { _t } from "@web/core/l10n/translation";
+import { user } from "@web/core/user";
+import { session } from "@web/session";
 
 const OPEN_HOTKEYS = new Set(["control+shift+k", "control+alt+k"]);
 const SEARCH_DEBOUNCE_MS = 180;
 const MIN_QUERY_LENGTH = 2;
+const HISTORY_MAX = 15;
+const HISTORY_STORAGE_PREFIX = "ghori_qs_history";
 
 /**
  * Align the top app menu bar with the window action opened from quick search.
@@ -37,6 +41,22 @@ function syncMenuForAction(actionDict, menuService) {
     menuService.setCurrentMenu(menu.appID);
 }
 
+/** @param {Record<string, unknown>} result */
+function historyEntryFromResult(result) {
+    return {
+        model: result.model,
+        id: result.id,
+        name: result.name || "",
+        subtitle: result.subtitle || "",
+        category: result.category || "",
+        icon: result.icon,
+        model_label: result.model_label,
+        app_label: result.app_label,
+        app_icon_data: result.app_icon_data,
+        app_icon: result.app_icon,
+    };
+}
+
 export const quickSearchState = reactive({
     isOpen: false,
     query: "",
@@ -45,6 +65,7 @@ export const quickSearchState = reactive({
     loading: false,
     error: "",
     searched: false,
+    showingHistory: false,
 });
 
 export const quickSearchService = {
@@ -56,6 +77,50 @@ export const quickSearchService = {
         let previouslyFocused = null;
         let debounceTimer = null;
         let searchToken = 0;
+
+        const historyStorageKey = () => {
+            const db = session.db || "default";
+            const uid = user.userId;
+            return `${HISTORY_STORAGE_PREFIX}:${db}:user:${uid}`;
+        };
+
+        const loadSearchHistory = () => {
+            try {
+                const raw = browser.localStorage.getItem(historyStorageKey());
+                const parsed = raw ? JSON.parse(raw) : [];
+                return Array.isArray(parsed) ? parsed : [];
+            } catch {
+                return [];
+            }
+        };
+
+        const saveSearchHistory = (entries) => {
+            browser.localStorage.setItem(
+                historyStorageKey(),
+                JSON.stringify(entries.slice(0, HISTORY_MAX))
+            );
+        };
+
+        /** @param {Record<string, unknown>} result */
+        const pushSearchHistory = (result) => {
+            if (!result?.model || !result?.id) {
+                return loadSearchHistory();
+            }
+            const key = `${result.model}:${result.id}`;
+            const entry = historyEntryFromResult(result);
+            const next = [
+                entry,
+                ...loadSearchHistory().filter((row) => `${row.model}:${row.id}` !== key),
+            ];
+            saveSearchHistory(next);
+            return next;
+        };
+
+        // Drop legacy shared bucket (session.uid was often undefined → uid 0 for everyone).
+        const legacySharedKey = `${HISTORY_STORAGE_PREFIX}:${session.db || "default"}:0`;
+        if (browser.localStorage.getItem(legacySharedKey)) {
+            browser.localStorage.removeItem(legacySharedKey);
+        }
 
         const lockBackground = () => {
             const webClient = document.querySelector(".o_web_client");
@@ -89,12 +154,23 @@ export const quickSearchService = {
             document.body.classList.remove("ghori-qs-open");
         };
 
+        const showSearchHistory = () => {
+            const history = loadSearchHistory();
+            quickSearchState.results = history;
+            quickSearchState.selectedIndex = 0;
+            quickSearchState.loading = false;
+            quickSearchState.error = "";
+            quickSearchState.searched = false;
+            quickSearchState.showingHistory = history.length > 0;
+        };
+
         const resetResults = () => {
             quickSearchState.results = [];
             quickSearchState.selectedIndex = 0;
             quickSearchState.loading = false;
             quickSearchState.error = "";
             quickSearchState.searched = false;
+            quickSearchState.showingHistory = false;
         };
 
         const close = () => {
@@ -120,7 +196,7 @@ export const quickSearchService = {
             }
             quickSearchState.isOpen = true;
             quickSearchState.query = "";
-            resetResults();
+            showSearchHistory();
             lockBackground();
         };
 
@@ -128,9 +204,10 @@ export const quickSearchService = {
             const token = ++searchToken;
             const trimmed = (query || "").trim();
             if (trimmed.length < MIN_QUERY_LENGTH) {
-                resetResults();
+                showSearchHistory();
                 return;
             }
+            quickSearchState.showingHistory = false;
             quickSearchState.loading = true;
             quickSearchState.error = "";
             try {
@@ -168,9 +245,10 @@ export const quickSearchService = {
             }
             const trimmed = (query || "").trim();
             if (trimmed.length < MIN_QUERY_LENGTH) {
-                resetResults();
+                showSearchHistory();
                 return;
             }
+            quickSearchState.showingHistory = false;
             debounceTimer = browser.setTimeout(() => {
                 debounceTimer = null;
                 runSearch(trimmed);
@@ -207,6 +285,7 @@ export const quickSearchService = {
             if (!result?.model || !result?.id) {
                 return;
             }
+            pushSearchHistory(result);
             close();
             const payload = await orm.call(
                 "ghori.quick.search.target",

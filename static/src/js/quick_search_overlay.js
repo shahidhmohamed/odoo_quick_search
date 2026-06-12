@@ -1,6 +1,7 @@
 /** @odoo-module **/
 
 import { Component, useEffect, useRef, useState } from "@odoo/owl";
+import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
 import { highlightParts, quickSearchState } from "./quick_search_service";
 
@@ -28,6 +29,9 @@ export class QuickSearchOverlay extends Component {
     }
 
     get groupedResults() {
+        if (this.qs.showingHistory && this.qs.results.length) {
+            return [{ category: _t("Recent"), rows: this.qs.results }];
+        }
         const groups = new Map();
         for (const row of this.qs.results) {
             const key = row.category || "Results";
