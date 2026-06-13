@@ -7,7 +7,11 @@ from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 from odoo.osv import expression
 
+from ..constants import DEFAULT_FIELDS_BY_MODEL
+
 _logger = logging.getLogger(__name__)
+
+_SEARCHABLE_FIELD_TYPES = ("char", "text", "html", "selection", "many2one")
 
 
 class GhoriQuickSearchTarget(models.Model):
@@ -112,6 +116,64 @@ class GhoriQuickSearchTarget(models.Model):
                     _("Pick at least one Search field for %(label)s.")
                     % {"label": rec.name or rec.model_id.display_name}
                 )
+
+    @api.model
+    def _field_records_for_names(self, model_id, names):
+        if not model_id or not names:
+            return self.env["ir.model.fields"]
+        return self.env["ir.model.fields"].search(
+            [
+                ("model_id", "=", model_id),
+                ("name", "in", list(names)),
+            ]
+        )
+
+    @api.model
+    def _fallback_search_field(self, model_id):
+        return self.env["ir.model.fields"].search(
+            [
+                ("model_id", "=", model_id),
+                ("name", "in", ("name", "display_name")),
+                ("ttype", "in", _SEARCHABLE_FIELD_TYPES),
+            ],
+            limit=1,
+        )
+
+    @api.model
+    def _apply_target_defaults(self, vals):
+        """Populate search/subtitle fields and open action before create."""
+        if vals.get("search_field_ids"):
+            return
+        model_id = vals.get("model_id")
+        if not model_id:
+            return
+        model = self.env["ir.model"].browse(model_id)
+        spec = DEFAULT_FIELDS_BY_MODEL.get(model.model, {})
+        search_names = spec.get("search_field_names", ("name",))
+        fields = self._field_records_for_names(model_id, search_names)
+        if not fields:
+            fields = self._fallback_search_field(model_id)
+        if fields:
+            vals["search_field_ids"] = [(6, 0, fields.ids)]
+        if not vals.get("subtitle_field_ids") and spec.get("subtitle_field_names"):
+            subtitle_fields = self._field_records_for_names(
+                model_id, spec["subtitle_field_names"]
+            )
+            if subtitle_fields:
+                vals["subtitle_field_ids"] = [(6, 0, subtitle_fields.ids)]
+        if not vals.get("open_action_id") and spec.get("open_action_xmlid"):
+            try:
+                action = self.env.ref(spec["open_action_xmlid"])
+            except ValueError:
+                action = self.env["ir.actions.act_window"]
+            if action._name == "ir.actions.act_window":
+                vals["open_action_id"] = action.id
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            self._apply_target_defaults(vals)
+        return super().create(vals_list)
 
     @api.depends("search_field_ids.name", "subtitle_field_ids.name")
     def _compute_field_name_strings(self):
